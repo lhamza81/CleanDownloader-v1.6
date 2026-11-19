@@ -1,1 +1,49 @@
+name: Build APK
 
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Unpack project
+        run: unzip -q CleanBrowser.zip
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Accept Android licenses
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+
+      - name: Build debug APK
+        working-directory: CleanBrowser
+        shell: bash
+        run: gradle assembleDebug --stacktrace 2>&1 | tee build.log
+
+      - name: Show the errors
+        if: failure()
+        run: |
+          errs=$(grep -E '^e: |What went wrong|Execution failed' -A2 CleanBrowser/build.log | head -60)
+          if [ -z "$errs" ]; then errs=$(tail -n 40 CleanBrowser/build.log); fi
+          {
+            echo '### Build errors'
+            echo '```'
+            echo "$errs"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CleanDownloader-debug-apk
+          path: CleanBrowser/app/build/outputs/apk/debug/app-debug.apk
